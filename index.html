@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seyir oynatici</title>
+<style>
+html, body { margin: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+#p { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border: 0; }
+</style>
+</head>
+<body>
+<div id="p"></div>
+<script>
+/*
+ * Seyir TV uygulamasinin YouTube fragman aracisi.
+ * YouTube, web adresi olmayan uygulamalardan acilan oynaticilari reddediyor.
+ * TV bu sayfayi acar, sayfa YouTube'u gomer ve durumu postMessage ile TV'ye bildirir.
+ * Kullanim: ?v=VIDEO_ID&mute=1
+ */
+(function () {
+  'use strict';
+  var q = new URLSearchParams(location.search);
+  var id = (q.get('v') || '').replace(/[^A-Za-z0-9_-]/g, '');
+  var mute = q.get('mute') === '1';
+  var player = null;
+
+  function send(m) {
+    m.seyir = 1;
+    try { parent.postMessage(m, '*'); } catch (e) { /* bos */ }
+  }
+
+  window.onYouTubeIframeAPIReady = function () {
+    if (!id) { send({ ev: 'error', code: 2 }); return; }
+    player = new YT.Player('p', {
+      videoId: id,
+      playerVars: {
+        autoplay: 1, controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, modestbranding: 1,
+        playsinline: 1, rel: 0, cc_load_policy: 0, hl: 'tr', mute: mute ? 1 : 0, origin: location.origin
+      },
+      events: {
+        onReady: function (e) { if (mute) e.target.mute(); e.target.playVideo(); },
+        onStateChange: function (e) { send({ ev: 'state', state: e.data }); },
+        onError: function (e) { send({ ev: 'error', code: e.data }); }
+      }
+    });
+    setInterval(function () {
+      if (player && player.getCurrentTime) send({ ev: 'time', t: player.getCurrentTime(), d: player.getDuration() });
+    }, 1000);
+  };
+
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (x) { return; } }
+    if (!d || !d.seyir || !player) return;
+    if (d.func === 'pause') player.pauseVideo();
+    else if (d.func === 'play') player.playVideo();
+    else if (d.func === 'seek') player.seekTo(Number(d.t) || 0, true);
+    else if (d.func === 'unmute') player.unMute();
+  });
+})();
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
